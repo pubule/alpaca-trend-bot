@@ -48,6 +48,20 @@ def check_entry_conditions(candidate: dict, rules: dict) -> EntrySignal | None:
     )
 
 
+def vol_risk_multiplier(daily_closes: list[float], threshold_pct: float) -> float:
+    """Realized volatility (stddev of daily log-returns, annualized %) from SPY
+    closes. Above threshold -> risk halved; no VIX subscription needed."""
+    if not threshold_pct or len(daily_closes) < 2:
+        return 1.0
+    returns = [math.log(daily_closes[i] / daily_closes[i - 1]) for i in range(1, len(daily_closes))]
+    if not returns:
+        return 1.0
+    mean = sum(returns) / len(returns)
+    variance = sum((r - mean) ** 2 for r in returns) / len(returns)
+    annualized_pct = math.sqrt(variance) * math.sqrt(252) * 100
+    return 0.5 if annualized_pct > threshold_pct else 1.0
+
+
 def effective_risk_pct(base_pct: float, consecutive_losses: int, risk_guard: dict) -> float:
     """Halve risk after N straight losers; back to full size after a winner."""
     threshold = risk_guard.get("consecutive_losses_to_halve", 0)
@@ -171,6 +185,14 @@ if __name__ == "__main__":
     )
     assert far is not None
     assert abs(far.stop_price - 94.05) < 1e-9, far.stop_price  # LoD stop wins
+
+    # Vol multiplier: calm series -> full risk; shocked series -> halved.
+    calm = [100.0, 100.1, 99.9, 100.2, 99.8, 100.1, 100.0, 99.9, 100.1, 100.0, 99.9]
+    assert vol_risk_multiplier(calm, 25.0) == 1.0
+    shocked = [100.0, 94.0, 106.0, 92.0, 108.0, 90.0, 110.0, 88.0, 112.0, 86.0, 114.0]
+    assert vol_risk_multiplier(shocked, 25.0) == 0.5
+    assert vol_risk_multiplier(shocked, 0) == 1.0  # threshold disabled
+    assert vol_risk_multiplier([100.0], 25.0) == 1.0  # not enough data
 
     # Risk halving after consecutive losses.
     guard = {"consecutive_losses_to_halve": 3}

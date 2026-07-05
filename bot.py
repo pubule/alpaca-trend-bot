@@ -356,6 +356,19 @@ def _scan_and_enter(broker: Broker, conn, cfg, rules, telegram_token, telegram_c
     if risk_pct != base_risk_pct:
         logger.info("Risk halved to %.2f%% after consecutive losses", risk_pct)
 
+    high_vol_threshold = cfg.get("risk_guard", {}).get("high_vol_annualized_pct")
+    if high_vol_threshold:
+        try:
+            spy_df = broker.get_daily_bars(["SPY"], 30)
+            spy_closes = spy_df.loc["SPY"].sort_index()["close"].tolist()
+            vol_multiplier = strategy.vol_risk_multiplier(spy_closes[-11:], high_vol_threshold)
+        except Exception:
+            logger.warning("SPY volatility fetch failed; using full risk", exc_info=True)
+            vol_multiplier = 1.0
+        if vol_multiplier != 1.0:
+            logger.info("Risk scaled by vol multiplier %.2f (SPY realized vol elevated)", vol_multiplier)
+        risk_pct *= vol_multiplier
+
     today_iso = datetime.now(ET).strftime("%Y-%m-%d")
     entries = []
     for candidate in candidates:

@@ -7,61 +7,40 @@ from universe import get_sp500_symbols
 logger = logging.getLogger(__name__)
 
 
-def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]:
-    """Scan the universe for gapping candidates.
+def spy_regime_ok(df, rules: dict) -> bool:
+    """True if regime filter is off, SPY bars are unavailable (fail open,
+    logged), or SPY's prior close is above its SMA. False blocks all entries."""
+    if not rules["filters"].get("require_spy_above_sma200", False):
+        return True
+    try:
+        spy_closes = df.loc["SPY"].sort_index()["close"]
+    except KeyError:
+        logger.warning("SPY bars missing; regime filter skipped")
+        return True
+    sma_period = rules["filters"]["sma_period_days"]
+    if len(spy_closes) <= sma_period:
+        return True
+    spy_prev_close = float(spy_closes.iloc[-2])
+    spy_sma = float(spy_closes.iloc[-(sma_period + 1):-1].mean())
+    if spy_prev_close <= spy_sma:
+        logger.info(
+            "Regime filter: SPY prev close %.2f <= SMA%d %.2f — no long entries",
+            spy_prev_close, sma_period, spy_sma,
+        )
+        return False
+    return True
 
-    Gap/price context comes from Alpaca daily bars: the *last* bar row per
+
+def filter_candidates(df, symbols: list[str], rules: dict) -> list[dict]:
+    """Daily-bar gap/quality/regime filters shared by the live scanner and the
+    backtester. `df` is a get_daily_bars()-shaped frame; the *last* row per
     symbol is treated as today's (still-forming) session bar and the row
-    before it as the prior completed trading day. `gap_pct` is computed from
-    today's open vs. the prior day's close; `price` used for the
-    above-prev-high filter is today's most recent close-so-far.
+    before it as the prior completed trading day. Does NOT apply the news
+    catalyst filter (that needs a live/point-in-time news call) or top_n
+    truncation — callers do that.
     """
-    cfg = config_module.load_config()
-    if rules is None:
-        rules = config_module.load_rules(cfg["paths"]["rules_path"])
-    if top_n is None:
-        top_n = cfg["scanner"]["top_n_gappers"]
-    if broker is None:
-        config_module.load_env()
-        broker = Broker(
-            config_module.get_required_env("ALPACA_API_KEY"),
-            config_module.get_required_env("ALPACA_API_SECRET"),
-            paper=cfg["alpaca"]["paper"],
-            data_feed=cfg["alpaca"]["data_feed"],
-        )
-    if symbols is None:
-        symbols = get_sp500_symbols(
-            cache_path=cfg["scanner"]["universe_cache_path"],
-            max_age_days=cfg["scanner"]["universe_cache_max_age_days"],
-        )
-
-    if not symbols:
-        logger.warning("Empty symbol universe; skipping scan")
+    if not spy_regime_ok(df, rules):
         return []
-
-    lookback_days = cfg["scanner"]["daily_bar_lookback_days"]
-    require_spy_regime = rules["filters"].get("require_spy_above_sma200", False)
-    fetch_symbols = list(symbols)
-    if require_spy_regime and "SPY" not in fetch_symbols:
-        fetch_symbols.append("SPY")
-    df = broker.get_daily_bars(fetch_symbols, lookback_days)
-
-    if require_spy_regime:
-        try:
-            spy_df = df.loc["SPY"].sort_index()
-            spy_closes = spy_df["close"]
-            sma_period = rules["filters"]["sma_period_days"]
-            if len(spy_closes) > sma_period:
-                spy_prev_close = float(spy_closes.iloc[-2])
-                spy_sma = float(spy_closes.iloc[-(sma_period + 1):-1].mean())
-                if spy_prev_close <= spy_sma:
-                    logger.info(
-                        "Regime filter: SPY prev close %.2f <= SMA%d %.2f — no long entries",
-                        spy_prev_close, sma_period, spy_sma,
-                    )
-                    return []
-        except KeyError:
-            logger.warning("SPY bars missing; regime filter skipped")
 
     min_gap_pct = rules["filters"]["min_gap_pct"]
     sma_period = rules["filters"]["sma_period_days"]
@@ -125,4 +104,52 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
         )
 
     candidates.sort(key=lambda c: c["gap_pct"], reverse=True)
+    return candidates
+
+
+def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]:
+    """Scan the universe for gapping candidates, apply the news catalyst
+    filter (live news call), and return the top N by gap size."""
+    cfg = config_module.load_config()
+    if rules is None:
+        rules = config_module.load_rules(cfg["paths"]["rules_path"])
+    if top_n is None:
+        top_n = cfg["scanner"]["top_n_gappers"]
+    if broker is None:
+        config_module.load_env()
+        broker = Broker(
+            config_module.get_required_env("ALPACA_API_KEY"),
+            config_module.get_required_env("ALPACA_API_SECRET"),
+            paper=cfg["alpaca"]["paper"],
+            data_feed=cfg["alpaca"]["data_feed"],
+        )
+    if symbols is None:
+        symbols = get_sp500_symbols(
+            cache_path=cfg["scanner"]["universe_cache_path"],
+            max_age_days=cfg["scanner"]["universe_cache_max_age_days"],
+        )
+
+    if not symbols:
+        logger.warning("Empty symbol universe; skipping scan")
+        return []
+
+    lookback_days = cfg["scanner"]["daily_bar_lookback_days"]
+    require_spy_regime = rules["filters"].get("require_spy_above_sma200", False)
+    fetch_symbols = list(symbols)
+    if require_spy_regime and "SPY" not in fetch_symbols:
+        fetch_symbols.append("SPY")
+    df = broker.get_daily_bars(fetch_symbols, lookback_days)
+
+    candidates = filter_candidates(df, symbols, rules)
+
+    if rules["filters"].get("require_news_catalyst", False) and candidates:
+        try:
+            news_symbols = broker.get_news_symbols(
+                [c["symbol"] for c in candidates],
+                hours_back=rules["filters"].get("news_lookback_hours", 24),
+            )
+            candidates = [c for c in candidates if c["symbol"] in news_symbols]
+        except Exception:
+            logger.warning("News catalyst fetch failed; filter skipped this cycle", exc_info=True)
+
     return candidates[:top_n]

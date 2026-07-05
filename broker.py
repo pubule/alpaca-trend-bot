@@ -5,13 +5,15 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import (
     ClosePositionRequest,
+    GetCalendarRequest,
     LimitOrderRequest,
     MarketOrderRequest,
     ReplaceOrderRequest,
     StopOrderRequest,
 )
 from alpaca.data.historical.stock import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest
+from alpaca.data.historical.news import NewsClient
+from alpaca.data.requests import NewsRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.data.enums import DataFeed
 
@@ -41,6 +43,7 @@ class Broker:
     def __init__(self, api_key: str, api_secret: str, paper: bool = True, data_feed: str = "iex"):
         self.trading_client = TradingClient(api_key, api_secret, paper=paper)
         self.data_client = StockHistoricalDataClient(api_key, api_secret)
+        self.news_client = NewsClient(api_key, api_secret)
         self.data_feed = DataFeed.SIP if data_feed == "sip" else DataFeed.IEX
 
     def get_account(self):
@@ -52,8 +55,8 @@ class Broker:
     def get_open_positions(self):
         return _with_retry(self.trading_client.get_all_positions)
 
-    def get_daily_bars(self, symbols: list[str], lookback_days: int):
-        end = datetime.now(timezone.utc)
+    def get_daily_bars(self, symbols: list[str], lookback_days: int, end: datetime | None = None):
+        end = end or datetime.now(timezone.utc)
         start = end - timedelta(days=lookback_days)
         request = StockBarsRequest(
             symbol_or_symbols=symbols,
@@ -65,9 +68,18 @@ class Broker:
         bar_set = _with_retry(self.data_client.get_stock_bars, request)
         return bar_set.df
 
-    def get_intraday_bars(self, symbol: str, minutes_back: int):
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(minutes=minutes_back)
+    def get_intraday_bars(
+        self,
+        symbol,
+        minutes_back: int | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ):
+        """Live callers pass minutes_back (window ending now). Backtest passes
+        an explicit start/end (a trading session) and may pass a symbol list."""
+        if start is None:
+            end = end or datetime.now(timezone.utc)
+            start = end - timedelta(minutes=minutes_back)
         request = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame(5, TimeFrameUnit.Minute),
@@ -77,6 +89,35 @@ class Broker:
         )
         bar_set = _with_retry(self.data_client.get_stock_bars, request)
         return bar_set.df
+
+    def get_calendar(self, start_date, end_date):
+        request = GetCalendarRequest(start=start_date, end=end_date)
+        return _with_retry(self.trading_client.get_calendar, request)
+
+    def get_news_symbols(
+        self,
+        symbols: list[str],
+        hours_back: float | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> set[str]:
+        """Symbols mentioned in at least one news article in the window.
+        Live use passes hours_back; backtest passes an explicit start/end so
+        historical news windows are reproducible."""
+        if not symbols:
+            return set()
+        if start is None:
+            end = end or datetime.now(timezone.utc)
+            start = end - timedelta(hours=hours_back or 24)
+        request = NewsRequest(
+            symbols=",".join(symbols), start=start, end=end, limit=50, exclude_contentless=True
+        )
+        news_set = _with_retry(self.news_client.get_news, request)
+        articles = news_set.data.get("news", []) if hasattr(news_set, "data") else []
+        mentioned = set()
+        for article in articles:
+            mentioned.update(article.symbols or [])
+        return mentioned
 
     def submit_limit_order(self, symbol: str, qty: float, side: str, limit_price: float, tif: str = "day"):
         order_data = LimitOrderRequest(

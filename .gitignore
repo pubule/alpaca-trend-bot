@@ -2,5 +2,14 @@ node_modules/
 .venv/
 .env
 bot.db
+bot.db-wal
+bot.db-shm
+backtest*.db
+backtest*.db-wal
+backtest*.db-shm
+backtest.html
+dashboard.html
+cache/
 __pycache__/
 sp500.json
+bot.log

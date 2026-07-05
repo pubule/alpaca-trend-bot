@@ -14,6 +14,7 @@ risk_guard:
   no_entries_before_et: "09:45"  # skip opening chop
   no_new_entries_after_et: "15:00"
   monthly_target_pct: 2.0        # tracking/reporting only, not a promise
+  high_vol_annualized_pct: 25.0  # SPY realized vol (10d, annualized) above this -> risk halved
 
 telegram:
   enabled: true
