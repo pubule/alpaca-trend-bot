@@ -204,24 +204,57 @@ def _manage_open_positions(broker: Broker, conn, cfg, rules, telegram_token, tel
             dict(position), current_price, recent_bars, rules
         )
 
+        stop_order_id_now = position["current_stop_order_id"]
+
         if should_fire_partial:
             partial_qty = max(
                 int(position["initial_qty"] * rules["targets"]["partial_exit_pct_of_position"] / 100),
                 1,
             )
             partial_qty = min(partial_qty, position["qty"])
+            remaining_qty = position["qty"] - partial_qty
+
+            # Cancel resting stop first: it reserves the full qty and would
+            # otherwise reject the partial sell with "insufficient qty".
+            if stop_order_id_now:
+                try:
+                    broker.cancel_order(stop_order_id_now)
+                    state.remove_pending_order(conn, stop_order_id_now)
+                except Exception:
+                    logger.exception("Failed to cancel stop order before partial for %s", symbol)
+                stop_order_id_now = None
+
             order = broker.submit_market_order(symbol, partial_qty, side="sell")
             state.upsert_pending_order(
                 conn,
                 {"order_id": order.id, "symbol": symbol, "purpose": "partial_exit", "qty": partial_qty},
             )
 
-        if new_stop != position["current_stop"]:
+            # Re-establish a stop for the remaining qty at the (possibly
+            # updated) stop price so the position is never left unprotected.
+            if remaining_qty > 0:
+                try:
+                    new_stop_order = broker.submit_stop_order(symbol, remaining_qty, new_stop, side="sell")
+                    stop_order_id_now = new_stop_order.id
+                    state.upsert_pending_order(
+                        conn,
+                        {"order_id": new_stop_order.id, "symbol": symbol, "purpose": "stop", "qty": remaining_qty},
+                    )
+                except Exception:
+                    logger.exception("Failed to re-submit stop after partial for %s", symbol)
+
+            updated = dict(position)
+            updated["current_stop_order_id"] = stop_order_id_now
+            updated["current_stop"] = new_stop
+            updated["stage"] = new_stage
+            state.upsert_position(conn, updated)
+
+        elif new_stop != position["current_stop"]:
             try:
                 updated = dict(position)
-                if position["current_stop_order_id"]:
-                    replaced_order = broker.replace_stop_order(position["current_stop_order_id"], new_stop)
-                    state.remove_pending_order(conn, position["current_stop_order_id"])
+                if stop_order_id_now:
+                    replaced_order = broker.replace_stop_order(stop_order_id_now, new_stop)
+                    state.remove_pending_order(conn, stop_order_id_now)
                     state.upsert_pending_order(
                         conn,
                         {
@@ -232,6 +265,15 @@ def _manage_open_positions(broker: Broker, conn, cfg, rules, telegram_token, tel
                         },
                     )
                     updated["current_stop_order_id"] = replaced_order.id
+                else:
+                    # Stop order id missing (e.g. consumed by a partial this
+                    # cycle) — submit a fresh stop instead of replacing.
+                    new_stop_order = broker.submit_stop_order(symbol, position["qty"], new_stop, side="sell")
+                    updated["current_stop_order_id"] = new_stop_order.id
+                    state.upsert_pending_order(
+                        conn,
+                        {"order_id": new_stop_order.id, "symbol": symbol, "purpose": "stop", "qty": position["qty"]},
+                    )
                 updated["current_stop"] = new_stop
                 updated["stage"] = new_stage
                 state.upsert_position(conn, updated)
