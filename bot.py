@@ -1,7 +1,7 @@
 import argparse
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import config as config_module
@@ -72,6 +72,23 @@ def _reconcile_pending_orders(broker: Broker, conn, cfg, rules, telegram_token, 
         )
 
         if status not in ("filled", "partially_filled") or filled_qty <= 0:
+            # Stale entry limit orders: a fill hours later happens in a dead
+            # setup. Cancel after N cycles (rules.entry.cancel_unfilled_after_cycles).
+            if pending["purpose"] == "entry" and status in ("new", "accepted", "pending_new"):
+                max_age_minutes = (
+                    rules["entry"].get("cancel_unfilled_after_cycles", 0)
+                    * cfg["schedule"]["cycle_minutes"]
+                )
+                if max_age_minutes:
+                    submitted = datetime.fromisoformat(pending["submitted_at"])
+                    age_minutes = (datetime.now(timezone.utc) - submitted).total_seconds() / 60
+                    if age_minutes > max_age_minutes:
+                        try:
+                            broker.cancel_order(pending["order_id"])
+                            state.remove_pending_order(conn, pending["order_id"])
+                            logger.info("Canceled stale entry order %s (%s)", pending["order_id"], pending["symbol"])
+                        except Exception:
+                            logger.exception("Failed to cancel stale entry %s", pending["order_id"])
             continue
 
         symbol = pending["symbol"]
@@ -301,6 +318,10 @@ def _risk_guard_check(conn, cfg, equity: float, now_et: datetime) -> tuple[bool,
     today_iso = now_et.strftime("%Y-%m-%d")
     month_iso = now_et.strftime("%Y-%m")
 
+    earliest = guard.get("no_entries_before_et")
+    if earliest and now_et.time() < datetime.strptime(earliest, "%H:%M").time():
+        return False, "early_entry", f"before {earliest} ET (opening chop)"
+
     cutoff = guard.get("no_new_entries_after_et")
     if cutoff and now_et.time() >= datetime.strptime(cutoff, "%H:%M").time():
         return False, "late_entry", f"past {cutoff} ET"
@@ -335,12 +356,17 @@ def _scan_and_enter(broker: Broker, conn, cfg, rules, telegram_token, telegram_c
     if risk_pct != base_risk_pct:
         logger.info("Risk halved to %.2f%% after consecutive losses", risk_pct)
 
+    today_iso = datetime.now(ET).strftime("%Y-%m-%d")
     entries = []
     for candidate in candidates:
         symbol = candidate["symbol"]
         if state.get_position(conn, symbol) is not None:
             continue
         if state.get_pending_orders_for_symbol(conn, symbol, purpose="entry"):
+            continue
+        # No same-day re-entry: a stopped-out gapper stays in the top-20 list
+        # and re-entering it is the classic chop-bleed pattern.
+        if state.symbol_traded_today(conn, symbol, today_iso):
             continue
 
         signal = strategy.check_entry_conditions(candidate, rules)

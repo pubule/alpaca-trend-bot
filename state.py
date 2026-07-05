@@ -176,6 +176,14 @@ def entries_today(conn: sqlite3.Connection, iso_date: str) -> int:
     return open_count + pending_count + closed_count
 
 
+def symbol_traded_today(conn: sqlite3.Connection, symbol: str, iso_date: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM closed_trades WHERE symbol = ? AND exit_time >= ? LIMIT 1",
+        (symbol, iso_date),
+    ).fetchone()
+    return row is not None
+
+
 def log_equity(conn: sqlite3.Connection, date: str, equity: float) -> None:
     # First write of the day wins: snapshot is start-of-day equity.
     conn.execute(

@@ -40,7 +40,28 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
         return []
 
     lookback_days = cfg["scanner"]["daily_bar_lookback_days"]
-    df = broker.get_daily_bars(symbols, lookback_days)
+    require_spy_regime = rules["filters"].get("require_spy_above_sma200", False)
+    fetch_symbols = list(symbols)
+    if require_spy_regime and "SPY" not in fetch_symbols:
+        fetch_symbols.append("SPY")
+    df = broker.get_daily_bars(fetch_symbols, lookback_days)
+
+    if require_spy_regime:
+        try:
+            spy_df = df.loc["SPY"].sort_index()
+            spy_closes = spy_df["close"]
+            sma_period = rules["filters"]["sma_period_days"]
+            if len(spy_closes) > sma_period:
+                spy_prev_close = float(spy_closes.iloc[-2])
+                spy_sma = float(spy_closes.iloc[-(sma_period + 1):-1].mean())
+                if spy_prev_close <= spy_sma:
+                    logger.info(
+                        "Regime filter: SPY prev close %.2f <= SMA%d %.2f — no long entries",
+                        spy_prev_close, sma_period, spy_sma,
+                    )
+                    return []
+        except KeyError:
+            logger.warning("SPY bars missing; regime filter skipped")
 
     min_gap_pct = rules["filters"]["min_gap_pct"]
     sma_period = rules["filters"]["sma_period_days"]

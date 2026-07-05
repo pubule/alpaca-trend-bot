@@ -11,6 +11,7 @@ risk_guard:
   max_monthly_loss_pct: 4.0      # realized monthly loss >= 4% equity -> no new entries this month
   consecutive_losses_to_halve: 3 # after 3 straight losers -> risk% halved until a winner
   max_trades_per_day: 5
+  no_entries_before_et: "09:45"  # skip opening chop
   no_new_entries_after_et: "15:00"
   monthly_target_pct: 2.0        # tracking/reporting only, not a promise
 
@@ -19,7 +20,7 @@ telegram:
 
 schedule:
   timezone: "America/New_York"
-  cycle_minutes: 30
+  cycle_minutes: 15
   force_close_time_et: "15:55"
 
 scanner:

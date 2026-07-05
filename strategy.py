@@ -30,6 +30,12 @@ def check_entry_conditions(candidate: dict, rules: dict) -> EntrySignal | None:
     stop_pct = rules["stop"]["initial_stop_pct_below_low_of_day"]
     stop_price = low_of_day * (1 - stop_pct / 100)
 
+    # Stop floor: early in the day LoD ~= open -> razor-thin stop, huge size,
+    # instant noise stop-out. Enforce a minimum stop distance from entry.
+    min_stop_pct = rules["stop"].get("min_stop_distance_pct", 0.0)
+    if min_stop_pct:
+        stop_price = min(stop_price, entry_price * (1 - min_stop_pct / 100))
+
     risk_per_share = entry_price - stop_price
     if risk_per_share <= 0:
         return None
@@ -148,6 +154,23 @@ if __name__ == "__main__":
     stage, stop, _ = compute_stage(position, 102.5, {"low": [99.0, 99.5, 100.0]}, rules)
     assert stage == "trailing", stage
     assert stop == 100.2, stop
+
+    # Stop floor: LoD too close to entry -> floor kicks in; LoD far -> untouched.
+    entry_rules = {
+        "filters": {"require_above_prev_day_high": True},
+        "entry": {"limit_offset_pct": 0.0},
+        "stop": {"initial_stop_pct_below_low_of_day": 1.0, "min_stop_distance_pct": 1.5},
+    }
+    near = check_entry_conditions(
+        {"symbol": "X", "price": 100.0, "prev_high": 99.0, "low_of_day": 99.9}, entry_rules
+    )
+    assert near is not None
+    assert abs(near.stop_price - 98.5) < 1e-9, near.stop_price  # floored at 1.5%
+    far = check_entry_conditions(
+        {"symbol": "X", "price": 100.0, "prev_high": 99.0, "low_of_day": 95.0}, entry_rules
+    )
+    assert far is not None
+    assert abs(far.stop_price - 94.05) < 1e-9, far.stop_price  # LoD stop wins
 
     # Risk halving after consecutive losses.
     guard = {"consecutive_losses_to_halve": 3}
