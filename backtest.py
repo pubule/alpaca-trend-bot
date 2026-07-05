@@ -299,6 +299,8 @@ def run_backtest(start_date_str: str, end_date_str: str, use_news: bool,
         cache_path=cfg["scanner"]["universe_cache_path"],
         max_age_days=cfg["scanner"]["universe_cache_max_age_days"],
     )
+    if not symbols:
+        raise RuntimeError("Symbol universe is empty (SP500 fetch failed and no cache available); aborting backtest")
     fetch_symbols = list(symbols)
     if "SPY" not in fetch_symbols:
         fetch_symbols.append("SPY")

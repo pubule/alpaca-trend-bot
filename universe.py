@@ -1,8 +1,10 @@
+import io
 import json
 import logging
 from datetime import datetime, timezone
 
 import pandas as pd
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +12,10 @@ _WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
 
 def fetch_sp500_symbols() -> list[str]:
-    tables = pd.read_html(_WIKIPEDIA_URL)
+    # Wikipedia 403s the default urllib/pandas User-Agent; a browser-like one works.
+    response = requests.get(_WIKIPEDIA_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+    response.raise_for_status()
+    tables = pd.read_html(io.StringIO(response.text))
     symbols_col = tables[0]["Symbol"]
     # Alpaca uses '-' for share classes (e.g. BRK-B); Wikipedia uses '.' (BRK.B).
     return [s.replace(".", "-") for s in symbols_col.tolist()]

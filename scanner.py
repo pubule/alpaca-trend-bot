@@ -130,8 +130,11 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
         )
 
     if not symbols:
-        logger.warning("Empty symbol universe; skipping scan")
-        return []
+        # Silent-empty-universe would look identical to "no gappers today" —
+        # raise instead so bot.py's error path alerts via Telegram.
+        raise RuntimeError(
+            "Symbol universe is empty (SP500 fetch failed and no cache available); refusing to scan"
+        )
 
     lookback_days = cfg["scanner"]["daily_bar_lookback_days"]
     require_spy_regime = rules["filters"].get("require_spy_above_sma200", False)
