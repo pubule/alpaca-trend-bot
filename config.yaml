@@ -1,0 +1,30 @@
+alpaca:
+  paper: true
+  data_feed: iex          # iex | sip (free tier = IEX only)
+
+account:
+  risk_pct_per_trade: 1.0
+  max_position_pct: 10.0
+
+telegram:
+  enabled: true
+
+schedule:
+  timezone: "America/New_York"
+  cycle_minutes: 30
+  force_close_time_et: "15:55"
+
+scanner:
+  universe_cache_path: "sp500.json"
+  universe_cache_max_age_days: 7
+  top_n_gappers: 20
+  daily_bar_lookback_days: 400
+
+paths:
+  db_path: "bot.db"
+  rules_path: "rules.json"
+  dashboard_output_path: "dashboard.html"
+  log_file: "bot.log"
+
+logging:
+  level: "INFO"

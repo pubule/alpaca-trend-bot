@@ -1,0 +1,30 @@
+{
+  "universe": "SP500",
+  "timeframe": "5Min",
+  "filters": {
+    "min_gap_pct": 3.0,
+    "require_above_prev_day_high": true,
+    "require_prev_close_above_sma200": true,
+    "sma_period_days": 200
+  },
+  "entry": {
+    "trigger": "price_crosses_above_prev_day_high",
+    "order_type": "limit",
+    "limit_offset_pct": 0.1,
+    "cancel_unfilled_after_cycles": 1
+  },
+  "stop": {
+    "initial_stop_pct_below_low_of_day": 1.0
+  },
+  "targets": {
+    "partial_r_multiple": 0.75,
+    "partial_exit_pct_of_position": 50,
+    "breakeven_r_multiple": 1.0,
+    "trail_mode": "swing_low_5min",
+    "trail_lookback_bars": 3
+  },
+  "risk": {
+    "risk_pct_per_trade": 1.0,
+    "max_position_pct_of_account": 10.0
+  }
+}
