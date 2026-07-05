@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS closed_trades (
     realized_pnl  REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS equity_log (
+    date   TEXT PRIMARY KEY,   -- YYYY-MM-DD (ET trading date)
+    equity REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cycle_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_time   TEXT NOT NULL UNIQUE,
@@ -132,6 +137,64 @@ def get_closed_trades(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM closed_trades ORDER BY exit_time"
     ).fetchall()
+
+
+# --- risk guard helpers ---
+
+def realized_pnl_since(conn: sqlite3.Connection, iso_date: str) -> float:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(realized_pnl), 0) AS pnl FROM closed_trades WHERE exit_time >= ?",
+        (iso_date,),
+    ).fetchone()
+    return float(row["pnl"])
+
+
+def consecutive_losses(conn: sqlite3.Connection) -> int:
+    rows = conn.execute(
+        "SELECT r_multiple FROM closed_trades ORDER BY exit_time DESC, id DESC LIMIT 20"
+    ).fetchall()
+    count = 0
+    for row in rows:
+        if row["r_multiple"] < 0:
+            count += 1
+        else:
+            break
+    return count
+
+
+def entries_today(conn: sqlite3.Connection, iso_date: str) -> int:
+    open_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM positions WHERE entry_time >= ?", (iso_date,)
+    ).fetchone()["n"]
+    pending_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM pending_orders WHERE purpose = 'entry' AND submitted_at >= ?",
+        (iso_date,),
+    ).fetchone()["n"]
+    closed_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM closed_trades WHERE entry_time >= ?", (iso_date,)
+    ).fetchone()["n"]
+    return open_count + pending_count + closed_count
+
+
+def log_equity(conn: sqlite3.Connection, date: str, equity: float) -> None:
+    # First write of the day wins: snapshot is start-of-day equity.
+    conn.execute(
+        "INSERT OR IGNORE INTO equity_log (date, equity) VALUES (?, ?)", (date, equity)
+    )
+    conn.commit()
+
+
+def month_start_equity(conn: sqlite3.Connection, month: str) -> float | None:
+    """month = 'YYYY-MM'. Returns equity from the first logged day of that month."""
+    row = conn.execute(
+        "SELECT equity FROM equity_log WHERE date LIKE ? ORDER BY date LIMIT 1",
+        (month + "%",),
+    ).fetchone()
+    return float(row["equity"]) if row else None
+
+
+def get_equity_log(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM equity_log ORDER BY date").fetchall()
 
 
 # --- pending orders ---

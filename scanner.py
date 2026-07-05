@@ -46,6 +46,8 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
     sma_period = rules["filters"]["sma_period_days"]
     require_above_prev_high = rules["filters"]["require_above_prev_day_high"]
     require_prev_close_above_sma = rules["filters"]["require_prev_close_above_sma200"]
+    min_price = rules["filters"].get("min_price", 0.0)
+    min_avg_dollar_volume = rules["filters"].get("min_avg_dollar_volume", 0.0)
 
     candidates = []
     for symbol in symbols:
@@ -73,6 +75,14 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
         closes = sym_df["close"]
         sma_200 = float(closes.iloc[-(sma_period + 1):-1].mean()) if len(closes) > sma_period else None
 
+        if price < min_price:
+            continue
+        if min_avg_dollar_volume > 0:
+            # 20-day avg dollar volume from the already-fetched daily bars
+            recent = sym_df.iloc[-21:-1] if len(sym_df) > 21 else sym_df.iloc[:-1]
+            avg_dollar_volume = float((recent["close"] * recent["volume"]).mean())
+            if avg_dollar_volume < min_avg_dollar_volume:
+                continue
         if gap_pct < min_gap_pct:
             continue
         if require_above_prev_high and price <= prev_high:

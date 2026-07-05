@@ -50,15 +50,24 @@ def notify_exit(bot_token, chat_id, symbol, price, r_multiple, reason) -> None:
     )
 
 
-def notify_eod_summary(bot_token, chat_id, closed_today: list) -> None:
+def notify_eod_summary(bot_token, chat_id, closed_today: list, mtd_line: str | None = None) -> None:
     if not closed_today:
-        send_telegram_message(bot_token, chat_id, "EOD summary: no trades closed today")
+        text = "EOD summary: no trades closed today"
+        if mtd_line:
+            text += "\n" + mtd_line
+        send_telegram_message(bot_token, chat_id, text)
         return
     total_r = sum(t["r_multiple"] for t in closed_today)
     lines = [f"EOD summary: {len(closed_today)} trades, total {total_r:.2f}R"]
     for t in closed_today:
         lines.append(f"  {t['symbol']}: {t['r_multiple']:.2f}R")
+    if mtd_line:
+        lines.append(mtd_line)
     send_telegram_message(bot_token, chat_id, "\n".join(lines))
+
+
+def notify_risk_halt(bot_token, chat_id, kind: str, detail: str) -> None:
+    send_telegram_message(bot_token, chat_id, f"RISK HALT ({kind}): {detail} — no new entries")
 
 
 def notify_error(bot_token, chat_id, message: str) -> None:

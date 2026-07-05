@@ -6,6 +6,14 @@ account:
   risk_pct_per_trade: 1.0
   max_position_pct: 10.0
 
+risk_guard:
+  max_daily_loss_pct: 2.0        # realized daily loss >= 2% equity -> no new entries today
+  max_monthly_loss_pct: 4.0      # realized monthly loss >= 4% equity -> no new entries this month
+  consecutive_losses_to_halve: 3 # after 3 straight losers -> risk% halved until a winner
+  max_trades_per_day: 5
+  no_new_entries_after_et: "15:00"
+  monthly_target_pct: 2.0        # tracking/reporting only, not a promise
+
 telegram:
   enabled: true
 

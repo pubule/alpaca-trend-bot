@@ -42,11 +42,28 @@ def check_entry_conditions(candidate: dict, rules: dict) -> EntrySignal | None:
     )
 
 
-def position_size(equity: float, buying_power: float, risk_per_share: float, entry_price: float, rules: dict) -> int:
+def effective_risk_pct(base_pct: float, consecutive_losses: int, risk_guard: dict) -> float:
+    """Halve risk after N straight losers; back to full size after a winner."""
+    threshold = risk_guard.get("consecutive_losses_to_halve", 0)
+    if threshold and consecutive_losses >= threshold:
+        return base_pct / 2
+    return base_pct
+
+
+def position_size(
+    equity: float,
+    buying_power: float,
+    risk_per_share: float,
+    entry_price: float,
+    rules: dict,
+    risk_pct: float | None = None,
+) -> int:
     if risk_per_share <= 0 or entry_price <= 0:
         return 0
 
-    risk_dollars = equity * rules["risk"]["risk_pct_per_trade"] / 100
+    if risk_pct is None:
+        risk_pct = rules["risk"]["risk_pct_per_trade"]
+    risk_dollars = equity * risk_pct / 100
     qty_by_risk = risk_dollars / risk_per_share
 
     max_position_dollars = equity * rules["risk"]["max_position_pct_of_account"] / 100
@@ -131,5 +148,13 @@ if __name__ == "__main__":
     stage, stop, _ = compute_stage(position, 102.5, {"low": [99.0, 99.5, 100.0]}, rules)
     assert stage == "trailing", stage
     assert stop == 100.2, stop
+
+    # Risk halving after consecutive losses.
+    guard = {"consecutive_losses_to_halve": 3}
+    assert effective_risk_pct(1.0, 0, guard) == 1.0
+    assert effective_risk_pct(1.0, 2, guard) == 1.0
+    assert effective_risk_pct(1.0, 3, guard) == 0.5
+    assert effective_risk_pct(1.0, 5, guard) == 0.5
+    assert effective_risk_pct(1.0, 5, {}) == 1.0  # guard disabled -> full size
 
     print("OK")
