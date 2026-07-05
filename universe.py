@@ -17,8 +17,10 @@ def fetch_sp500_symbols() -> list[str]:
     response.raise_for_status()
     tables = pd.read_html(io.StringIO(response.text))
     symbols_col = tables[0]["Symbol"]
-    # Alpaca uses '-' for share classes (e.g. BRK-B); Wikipedia uses '.' (BRK.B).
-    return [s.replace(".", "-") for s in symbols_col.tolist()]
+    # Alpaca expects the dot form for share classes (e.g. BRK.B), same as
+    # Wikipedia — no conversion needed. (A prior version of this code
+    # rewrote '.' to '-', which Alpaca's API rejects as an unknown symbol.)
+    return symbols_col.tolist()
 
 
 def load_cached_symbols(cache_path: str, max_age_days: int) -> list[str] | None:
