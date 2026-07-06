@@ -382,6 +382,23 @@ def _scan_and_enter(broker: Broker, conn, cfg, rules, telegram_token, telegram_c
         if state.symbol_traded_today(conn, symbol, today_iso):
             continue
 
+        if rules["entry"].get("trigger") == "orb_30min":
+            now_et = datetime.now(ET)
+            orb_end_et = now_et.replace(hour=10, minute=0, second=0, microsecond=0)
+            if now_et < orb_end_et:
+                continue  # opening range not complete yet
+            try:
+                minutes_back = int((now_et - orb_end_et).total_seconds() / 60) + 35
+                bars = broker.get_intraday_bars(symbol, minutes_back=minutes_back)
+                orb_bars = bars[bars.index.get_level_values(-1) < orb_end_et.astimezone(timezone.utc)]
+                if orb_bars.empty:
+                    continue
+                candidate = dict(candidate)
+                candidate["orb_high"] = float(orb_bars["high"].max())
+            except Exception:
+                logger.exception("Failed to compute ORB high for %s", symbol)
+                continue
+
         signal = strategy.check_entry_conditions(candidate, rules)
         if signal is None:
             continue

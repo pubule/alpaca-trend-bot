@@ -85,6 +85,11 @@ def filter_candidates(df, symbols: list[str], rules: dict) -> list[dict]:
                 continue
         if gap_pct < min_gap_pct:
             continue
+        # Optional upper bound: enables gap-DOWN strategies (e.g. max_gap_pct
+        # -2.0 = must gap down at least 2%; pair with a negative min_gap_pct).
+        max_gap_pct = rules["filters"].get("max_gap_pct")
+        if max_gap_pct is not None and gap_pct > max_gap_pct:
+            continue
         if require_above_prev_high and price <= prev_high:
             continue
         if require_prev_close_above_sma:
@@ -100,10 +105,14 @@ def filter_candidates(df, symbols: list[str], rules: dict) -> list[dict]:
                 "sma_200": sma_200,
                 "price": price,
                 "low_of_day": low_of_day,
+                "today_open": today_open,
             }
         )
 
-    candidates.sort(key=lambda c: c["gap_pct"], reverse=True)
+    # Gap-up strategies want the biggest gap first; gap-down (max_gap_pct
+    # negative) want the deepest dip first.
+    gap_down_mode = (rules["filters"].get("max_gap_pct") or 0) < 0
+    candidates.sort(key=lambda c: c["gap_pct"], reverse=not gap_down_mode)
     return candidates
 
 

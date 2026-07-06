@@ -24,6 +24,21 @@ def check_entry_conditions(candidate: dict, rules: dict) -> EntrySignal | None:
     if rules["filters"]["require_above_prev_day_high"] and price <= prev_high:
         return None
 
+    # ORB variant: entry requires a break of the first-30-min opening range
+    # high. Candidates carry orb_high once the opening range is complete;
+    # before that (or if bars are missing) no entry.
+    if rules["entry"].get("trigger") == "orb_30min":
+        orb_high = candidate.get("orb_high")
+        if orb_high is None or price <= orb_high:
+            return None
+
+    # Reclaim variant (gap-down mean reversion): enter only once price has
+    # recovered back above today's open — the dip is being bought.
+    if rules["entry"].get("trigger") == "reclaim_open":
+        today_open = candidate.get("today_open")
+        if today_open is None or price <= today_open:
+            return None
+
     limit_offset_pct = rules["entry"]["limit_offset_pct"]
     entry_price = price * (1 + limit_offset_pct / 100)
 

@@ -254,6 +254,12 @@ def _simulate_day(broker, conn, cfg, rules, day, day_open_utc, day_close_utc,
                 candidate_now = dict(c)
                 candidate_now["price"] = float(so_far["close"].iloc[-1])
                 candidate_now["low_of_day"] = float(so_far["low"].min())
+                if rules["entry"].get("trigger") == "orb_30min":
+                    orb_end = day_open_utc + timedelta(minutes=30)
+                    orb_bars = bars[bars.index < orb_end]
+                    if cursor < orb_end or orb_bars.empty:
+                        continue  # opening range not complete yet
+                    candidate_now["orb_high"] = float(orb_bars["high"].max())
                 signal = strategy.check_entry_conditions(candidate_now, rules)
                 if signal is None:
                     continue
@@ -278,8 +284,8 @@ def _simulate_day(broker, conn, cfg, rules, day, day_open_utc, day_close_utc,
 
 def run_backtest(start_date_str: str, end_date_str: str, use_news: bool,
                   starting_equity: float, db_path: str, universe: list[str] | None = None,
-                  rules_path: str | None = None) -> None:
-    cfg = config_module.load_config()
+                  rules_path: str | None = None, config_path: str | None = None) -> None:
+    cfg = config_module.load_config(config_path or "config.yaml")
     rules = config_module.load_rules(rules_path or cfg["paths"]["rules_path"])
 
     for ext in ("", "-wal", "-shm"):
@@ -356,12 +362,13 @@ if __name__ == "__main__":
     parser.add_argument("--db", default="backtest.db")
     parser.add_argument("--universe", help="Comma-separated symbol override, e.g. AAPL,NVDA,MSFT (for quick tests)")
     parser.add_argument("--rules", help="Alternate rules.json path (for strategy experiments)")
+    parser.add_argument("--config", help="Alternate config.yaml path (for risk-guard experiments)")
     args = parser.parse_args()
 
     universe = args.universe.split(",") if args.universe else None
     run_backtest(args.start, args.end, use_news=not args.no_news,
                  starting_equity=args.starting_equity, db_path=args.db, universe=universe,
-                 rules_path=args.rules)
+                 rules_path=args.rules, config_path=args.config)
 
     cfg = config_module.load_config()
     generate_html(db_path=args.db, output_path="backtest.html")

@@ -1,8 +1,17 @@
-# Alpaca Trend Join Long Bot
+# Alpaca Gap-Down Reclaim Bot
 
-Autonomous, paper-first day-trading bot on Alpaca. Long-only "Trend Join Long"
-gapper strategy on SP500, 5-min chart, 15-min cycle. See `/PLAN.md` (repo
-root) for the full design rationale.
+Autonomous, paper-first day-trading bot on Alpaca. Long-only **mean reversion**
+on SP500: buy stocks in an uptrend (above their 200-day SMA, SPY also above
+its own) that gap DOWN ≥2% with a news catalyst and then reclaim their opening
+price intraday. 5-min chart, 15-min cycle, everything closed by 15:55 ET.
+
+This strategy replaced the original "Trend Join Long" gap-up momentum approach
+after systematic backtesting (see `EXPERIMENTS.md`): every momentum variant
+lost money on 2023-2025 SP500 data, while gap-down reclaim tested at **+12.8%
+over 3 years, 58.6% win rate, all years positive, max drawdown 6.7%** (E16
+config, now the committed `rules.json`). Backtests are optimistic (IEX data,
+simplified fills, no slippage) — paper trading is still the gate before any
+real money.
 
 **This is paper-trading software. Never point it at a live account without
 weeks of clean paper results reviewed manually.**

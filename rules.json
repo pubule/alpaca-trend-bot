@@ -2,18 +2,19 @@
   "universe": "SP500",
   "timeframe": "5Min",
   "filters": {
-    "min_gap_pct": 3.0,
-    "require_above_prev_day_high": true,
+    "min_gap_pct": -100.0,
+    "require_above_prev_day_high": false,
     "require_prev_close_above_sma200": true,
     "sma_period_days": 200,
     "min_price": 5.0,
     "min_avg_dollar_volume": 20000000,
     "require_spy_above_sma200": true,
     "require_news_catalyst": true,
-    "news_lookback_hours": 24
+    "news_lookback_hours": 24,
+    "max_gap_pct": -2.0
   },
   "entry": {
-    "trigger": "price_crosses_above_prev_day_high",
+    "trigger": "reclaim_open",
     "order_type": "limit",
     "limit_offset_pct": 0.1,
     "cancel_unfilled_after_cycles": 1
@@ -30,7 +31,8 @@
     "trail_lookback_bars": 3
   },
   "risk": {
-    "risk_pct_per_trade": 1.0,
-    "max_position_pct_of_account": 10.0
-  }
+    "risk_pct_per_trade": 0.45,
+    "max_position_pct_of_account": 30.0
+  },
+  "strategy_name": "Gap-Down Reclaim (mean reversion, long-only)"
 }
