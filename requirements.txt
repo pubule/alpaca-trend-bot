@@ -1,4 +1,5 @@
 alpaca-py
+anthropic
 requests
 pyyaml
 pandas

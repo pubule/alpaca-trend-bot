@@ -135,12 +135,13 @@ def _simulate_day(broker, conn, cfg, rules, day, day_open_utc, day_close_utc,
 
     if use_news and rules["filters"].get("require_news_catalyst", False) and candidates:
         try:
-            news_symbols = broker.get_news_symbols(
+            articles = broker.get_news_articles(
                 [c["symbol"] for c in candidates],
                 start=day_open_utc - timedelta(hours=rules["filters"].get("news_lookback_hours", 24)),
                 end=day_open_utc,
             )
-            candidates = [c for c in candidates if c["symbol"] in news_symbols]
+            candidates = [c for c in candidates if c["symbol"] in articles]
+            candidates = scanner.apply_llm_filter(candidates, articles, rules)
         except Exception:
             logger.warning("Backtest news fetch failed for %s; filter skipped", day, exc_info=True)
 

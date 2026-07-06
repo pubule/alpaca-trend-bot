@@ -94,18 +94,18 @@ class Broker:
         request = GetCalendarRequest(start=start_date, end=end_date)
         return _with_retry(self.trading_client.get_calendar, request)
 
-    def get_news_symbols(
+    def get_news_articles(
         self,
         symbols: list[str],
         hours_back: float | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-    ) -> set[str]:
-        """Symbols mentioned in at least one news article in the window.
-        Live use passes hours_back; backtest passes an explicit start/end so
-        historical news windows are reproducible."""
+    ) -> dict[str, list[str]]:
+        """Headlines per requested symbol in the window. Live use passes
+        hours_back; backtest passes an explicit start/end so historical news
+        windows are reproducible."""
         if not symbols:
-            return set()
+            return {}
         if start is None:
             end = end or datetime.now(timezone.utc)
             start = end - timedelta(hours=hours_back or 24)
@@ -114,10 +114,17 @@ class Broker:
         )
         news_set = _with_retry(self.news_client.get_news, request)
         articles = news_set.data.get("news", []) if hasattr(news_set, "data") else []
-        mentioned = set()
+        requested = set(symbols)
+        by_symbol: dict[str, list[str]] = {}
         for article in articles:
-            mentioned.update(article.symbols or [])
-        return mentioned
+            for sym in article.symbols or []:
+                if sym in requested and article.headline:
+                    by_symbol.setdefault(sym, []).append(article.headline)
+        return by_symbol
+
+    def get_news_symbols(self, symbols: list[str], **kwargs) -> set[str]:
+        """Symbols with at least one news article in the window."""
+        return set(self.get_news_articles(symbols, **kwargs))
 
     def submit_limit_order(self, symbol: str, qty: float, side: str, limit_price: float, tif: str = "day"):
         order_data = LimitOrderRequest(

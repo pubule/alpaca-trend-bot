@@ -156,12 +156,30 @@ def top_gappers(broker=None, symbols=None, rules=None, top_n=None) -> list[dict]
 
     if rules["filters"].get("require_news_catalyst", False) and candidates:
         try:
-            news_symbols = broker.get_news_symbols(
+            articles = broker.get_news_articles(
                 [c["symbol"] for c in candidates],
                 hours_back=rules["filters"].get("news_lookback_hours", 24),
             )
-            candidates = [c for c in candidates if c["symbol"] in news_symbols]
+            candidates = [c for c in candidates if c["symbol"] in articles]
+            candidates = apply_llm_filter(candidates, articles, rules)
         except Exception:
             logger.warning("News catalyst fetch failed; filter skipped this cycle", exc_info=True)
 
     return candidates[:top_n]
+
+
+def apply_llm_filter(candidates: list[dict], articles: dict[str, list[str]], rules: dict) -> list[dict]:
+    """Drop candidates whose gap-down catalyst Claude classifies as structural.
+    No ANTHROPIC_API_KEY in the environment -> no-op (strategy works as-is)."""
+    if not candidates or not rules["filters"].get("llm_catalyst_filter", False):
+        return candidates
+    import llm_filter  # deferred: anthropic import only when the feature is on
+
+    classifier = llm_filter.CatalystClassifier.from_env()
+    if classifier is None:
+        return candidates
+    try:
+        return classifier.drop_structural(candidates, articles)
+    except Exception:
+        logger.warning("LLM catalyst filter failed; keeping all candidates", exc_info=True)
+        return candidates

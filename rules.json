@@ -11,6 +11,7 @@
     "require_spy_above_sma200": true,
     "require_news_catalyst": true,
     "news_lookback_hours": 24,
+    "llm_catalyst_filter": true,
     "max_gap_pct": -2.0
   },
   "entry": {

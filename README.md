@@ -174,6 +174,7 @@ noise trades. The strategy's edge (or lack of one) is still the strategy's.
 | `high_vol_annualized_pct` | SPY's realized volatility (10-day, annualized) above this halves risk — no VIX subscription needed. |
 | `require_spy_above_sma200` (rules.json) | No long entries at all while SPY is below its own 200-day average (bear-regime filter). |
 | `require_news_catalyst` (rules.json) | Only trade gappers with a recent news headline (Alpaca News API) — a gap with a stated reason tends to hold up better than one without. |
+| `llm_catalyst_filter` (rules.json) | **Optional, needs `ANTHROPIC_API_KEY` in `.env`.** Claude classifies each candidate's headlines: *transitory* cause (downgrade, sector selloff — tends to mean-revert, our trade) vs *structural* (guidance cut, fraud, litigation — tends to keep falling). Structural candidates are dropped. No key → filter silently off, strategy works as-is. Uses `claude-haiku-4-5` by default (~cents/day; override with `ANTHROPIC_MODEL`); classifications are cached in `llm_cache.json` so repeated headlines are never re-billed. Works in the backtester too (historical headlines), so you can measure its effect before trusting it. |
 | `monthly_target_pct` | **Reporting only.** Shows up in the dashboard and Telegram EOD summary as a yardstick. It is not, and cannot be, a guarantee. |
 
 ## Going live

@@ -10,6 +10,7 @@ backtest*.db-shm
 backtest.html
 dashboard.html
 cache/
+llm_cache.json
 __pycache__/
 sp500.json
 bot.log
