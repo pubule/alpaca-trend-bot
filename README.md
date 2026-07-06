@@ -87,6 +87,15 @@ Runs forever — this is how you actually trade (on paper). What it does:
 - **Transactions only happen during this loop, only during market hours.**
   There is no separate scheduler — if the process isn't running, nothing
   trades.
+- **Market hours (US Eastern) converted to Rome time:**
+
+  | Period | Open | Force-close | Close |
+  |---|---|---|---|
+  | Most of the year (ET is 6h behind Rome) | 15:30 | 21:55 | 22:00 |
+  | ~2-3 weeks in Mar/Oct (US already shifted DST, EU hasn't yet — 5h gap) | 14:30 | 20:55 | 21:00 |
+
+  The code itself is DST-safe (uses `zoneinfo`/Alpaca's `get_clock()`, all ET-
+  native) — this table is only for a human in Rome checking a wall clock.
 - Force-closes every open position at `force_close_time_et` (15:55 ET) via a
   dedicated wake, since 15-minute cycle boundaries don't land exactly on it.
 - Safe to restart mid-day: open positions and in-flight orders are read back
