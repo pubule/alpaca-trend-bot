@@ -277,9 +277,10 @@ def _simulate_day(broker, conn, cfg, rules, day, day_open_utc, day_close_utc,
 
 
 def run_backtest(start_date_str: str, end_date_str: str, use_news: bool,
-                  starting_equity: float, db_path: str, universe: list[str] | None = None) -> None:
+                  starting_equity: float, db_path: str, universe: list[str] | None = None,
+                  rules_path: str | None = None) -> None:
     cfg = config_module.load_config()
-    rules = config_module.load_rules(cfg["paths"]["rules_path"])
+    rules = config_module.load_rules(rules_path or cfg["paths"]["rules_path"])
 
     for ext in ("", "-wal", "-shm"):
         p = db_path + ext
@@ -354,11 +355,13 @@ if __name__ == "__main__":
     parser.add_argument("--starting-equity", type=float, default=100000.0)
     parser.add_argument("--db", default="backtest.db")
     parser.add_argument("--universe", help="Comma-separated symbol override, e.g. AAPL,NVDA,MSFT (for quick tests)")
+    parser.add_argument("--rules", help="Alternate rules.json path (for strategy experiments)")
     args = parser.parse_args()
 
     universe = args.universe.split(",") if args.universe else None
     run_backtest(args.start, args.end, use_news=not args.no_news,
-                 starting_equity=args.starting_equity, db_path=args.db, universe=universe)
+                 starting_equity=args.starting_equity, db_path=args.db, universe=universe,
+                 rules_path=args.rules)
 
     cfg = config_module.load_config()
     generate_html(db_path=args.db, output_path="backtest.html")

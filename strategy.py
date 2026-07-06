@@ -89,6 +89,12 @@ def position_size(
     max_position_dollars = equity * rules["risk"]["max_position_pct_of_account"] / 100
     qty_by_max_position = max_position_dollars / entry_price
 
+    # Optional: skip trades where the notional cap would clip the risk-based
+    # size. Clipped trades are the tight-stop fragile ones — clipping gives
+    # them max notional at a fraction of the intended risk, the worst combo.
+    if rules["risk"].get("skip_if_notional_capped", False) and qty_by_risk > qty_by_max_position:
+        return 0
+
     qty_by_buying_power = buying_power / entry_price
 
     qty = min(qty_by_risk, qty_by_max_position, qty_by_buying_power)
